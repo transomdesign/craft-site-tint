@@ -2,7 +2,7 @@
 	"name": "transom/craft-site-tint",
 	"description": "Apply distinct background colors to the Craft control panel based on the currently active site",
 	"type": "craft-plugin",
-	"license": "craft",
+	"license": "proprietary",
 	"support": {
 		"email": "accounts@transom.design",
 		"issues": "https://github.com/transomdesign/craft-site-tint/issues?state=open",

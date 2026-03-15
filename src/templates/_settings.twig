@@ -1,0 +1,109 @@
+{# @var plugin \transom\craftsitetint\SiteTint #}
+{# @var settings \transom\craftsitetint\models\Settings #}
+
+{% import '_includes/forms.twig' as forms %}
+
+{% set siteParam = craft.app.request.getParam('site') %}
+{% set allSites = sites ?? craft.app.sites.getAllSites() %}
+{% set allSitesForSwitcher = craft.app.sites.getAllSites() %}
+{% set currentSite = siteParam ? craft.app.sites.getSiteByHandle(siteParam) : craft.app.sites.getCurrentSite() %}
+{% set currentSite = currentSite ?: craft.app.sites.getPrimarySite() %}
+{{ forms.selectField({
+    label: 'Preview site'|t('site-tint'),
+    instructions: 'Switch the site context to preview the control panel tint for that site.'|t('site-tint'),
+    id: 'site-tint-site-switcher',
+    name: 'site',
+    value: currentSite ? currentSite.handle : null,
+    options: allSitesForSwitcher|map(site => { label: site.name, value: site.handle }),
+    inputAttributes: {
+        data: {
+            'site-tint-switcher': true,
+        },
+    },
+}) }}
+
+{% js %}
+(() => {
+  const handleChange = (value) => {
+    if (!value) return;
+    if (window.Craft && typeof Craft.getUrlWithParams === 'function') {
+      window.location.assign(Craft.getUrlWithParams(window.location.href, { site: value }));
+      return;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.set('site', value);
+    window.location.assign(url.toString());
+  };
+
+  const onChange = (event) => {
+    const target = event.target;
+    if (!target || !target.matches('[data-site-tint-switcher]')) return;
+    handleChange(target.value);
+  };
+
+  const init = () => {
+    document.addEventListener('change', onChange);
+  };
+
+  if (window.Garnish && Garnish.$doc) {
+    Garnish.$doc.ready(init);
+  } else if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+{% endjs %}
+
+<h3>{{ 'Per-site overrides'|t('site-tint') }}</h3>
+<p class="light">
+    {{ 'Adjust colors per site. These values are stored as overrides in plugin settings.'|t('site-tint') }}
+</p>
+
+{% set colorColumns = [
+    { key: 'background', label: 'Background'|t('site-tint') },
+    { key: 'accent', label: 'Accent'|t('site-tint') },
+    { key: 'accent-color', label: 'Accent text'|t('site-tint') },
+    { key: 'accent-color-hover', label: 'Accent text hover'|t('site-tint') },
+    { key: 'accent-hover', label: 'Accent hover'|t('site-tint') },
+] %}
+
+<table class="data fullwidth">
+    <thead>
+        <tr>
+            <th>{{ 'Site'|t('site-tint') }}</th>
+            <th>{{ 'Preview'|t('site-tint') }}</th>
+            {% for column in colorColumns %}
+                <th>{{ column.label }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for site in allSites %}
+            {% set rowColors = (siteColors[site.uid] ?? {}) %}
+            {% set resolved = resolvedColors[site.uid] ?? {} %}
+            <tr>
+                <th scope="row">
+                    <div>{{ site.name }}</div>
+                    <div class="light">{{ site.handle }}</div>
+                </th>
+                <td>
+                    <div style="display:inline-block; width:2rem; height:2rem; border-radius:0.375rem; background-color: {{ resolved.accent ?? 'transparent' }}; border: 1px solid rgba(0,0,0,0.1); vertical-align:middle;" title="{{ resolved.accent ?? 'Auto-assigned' }}"></div>
+                </td>
+                {% for column in colorColumns %}
+                    {% set colorValue = rowColors[column.key] ?? '' %}
+                    <td>
+                        {{ forms.color({
+                            id: "site-tint-#{site.uid}-#{column.key}"|replace({' ': '-', '_': '-'}),
+                            name: "overrides[#{site.uid}][#{column.key}]",
+                            value: colorValue,
+                            small: true,
+                        }) }}
+                    </td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{# ... #}

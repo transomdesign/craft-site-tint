@@ -3,20 +3,42 @@
 /**
  * PHPUnit bootstrap for site-tint plugin tests.
  *
- * Uses the project-root vendor autoloader so that craft\base\Model
+ * Uses a host Craft project's vendor autoloader so that craft\base\Model
  * and all Craft/Yii2 classes are available without a full Craft bootstrap.
  * Boots a minimal Yii2 console application so validators can run.
+ *
+ * The plugin is developed as a standalone git repo and consumed by host
+ * projects as a Composer path repository, typically symlinked in from
+ * outside the host project's directory tree (see e.g. mwe's
+ * plugins/craft-site-tint). Because of that symlink, PHP resolves __DIR__
+ * to this file's real location, which shares no filesystem ancestry with
+ * the host project — a fixed dirname(__DIR__, N) depth cannot reach it.
+ * Autoloader discovery below therefore searches candidates instead of
+ * assuming a directory depth, so tests work both when run from a host
+ * project's root and when the plugin has its own `composer install`.
  */
 
-// Project root is three levels up: tests/ -> plugin root -> plugins/ -> project root
-$projectRoot = dirname(__DIR__, 3);
-$projectRootAutoload = $projectRoot . '/vendor/autoload.php';
+$candidateAutoloaders = [
+    getcwd() . '/vendor/autoload.php',
+    dirname(__DIR__) . '/vendor/autoload.php',
+];
 
-if (file_exists($projectRootAutoload)) {
-    require $projectRootAutoload;
-} else {
-    require dirname(__DIR__) . '/vendor/autoload.php';
+$projectRootAutoload = null;
+foreach ($candidateAutoloaders as $candidate) {
+    if (file_exists($candidate)) {
+        $projectRootAutoload = $candidate;
+        break;
+    }
 }
+
+if ($projectRootAutoload === null) {
+    fwrite(STDERR, "Could not locate a Composer autoloader. Run phpunit from a host Craft project's root, or run `composer install` inside the plugin directory.\n");
+    exit(1);
+}
+
+$projectRoot = dirname($projectRootAutoload, 2);
+
+require $projectRootAutoload;
 
 // Yii.php registers the Yii global class alias and sets up Yii::$container.
 // It must be required explicitly — the Composer autoloader does not do this.

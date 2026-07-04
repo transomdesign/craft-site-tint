@@ -6,10 +6,10 @@ use PHPUnit\Framework\TestCase;
 use transom\craftsitetint\models\Settings;
 
 /**
- * Unit tests for site deletion cleanup logic (SETT-03).
+ * Unit tests for site deletion cleanup and beforeSaveSettings() filtering.
  *
- * Tests exercise the array manipulation that underpins the
- * EVENT_AFTER_DELETE_SITE cleanup and beforeSaveSettings() filtering,
+ * Tests exercise the array manipulation that underpins
+ * EVENT_AFTER_DELETE_SITE cleanup and SiteTint::beforeSaveSettings(),
  * without requiring a running Craft instance.
  */
 class SiteTintDeletionTest extends TestCase
@@ -18,93 +18,80 @@ class SiteTintDeletionTest extends TestCase
     private const UID_B = 'bbbbbbbb-1111-2222-3333-bbbbbbbbbbbb';
 
     /**
-     * When one UID is removed from a two-entry overrides array, only
-     * the other UID remains.
+     * When one UID is removed from a two-entry themes array, only the
+     * other UID remains.
      */
-    public function testRemovingUidFromOverrides(): void
+    public function testRemovingUidFromThemes(): void
     {
         $model = new Settings();
-        $model->overrides = [
-            self::UID_A => ['background' => '#ff0000'],
-            self::UID_B => ['background' => '#00ff00'],
+        $model->themes = [
+            self::UID_A => ['sidebar' => ['bg' => '#ff0000']],
+            self::UID_B => ['sidebar' => ['bg' => '#00ff00']],
         ];
 
-        unset($model->overrides[self::UID_A]);
+        unset($model->themes[self::UID_A]);
 
-        $this->assertArrayNotHasKey(self::UID_A, $model->overrides, 'Removed UID should not be present');
-        $this->assertArrayHasKey(self::UID_B, $model->overrides, 'Remaining UID should still be present');
-        $this->assertCount(1, $model->overrides, 'Overrides should have exactly one entry after removal');
+        $this->assertArrayNotHasKey(self::UID_A, $model->themes, 'Removed UID should not be present');
+        $this->assertArrayHasKey(self::UID_B, $model->themes, 'Remaining UID should still be present');
+        $this->assertCount(1, $model->themes, 'Themes should have exactly one entry after removal');
     }
 
     /**
-     * After removing the sole UID from overrides, the array is empty.
+     * After removing the sole UID from themes, the array is empty.
      */
-    public function testEmptyOverridesAfterRemoval(): void
+    public function testEmptyThemesAfterRemoval(): void
     {
         $model = new Settings();
-        $model->overrides = [
-            self::UID_A => ['background' => '#ff0000'],
+        $model->themes = [
+            self::UID_A => ['sidebar' => ['bg' => '#ff0000']],
         ];
 
-        unset($model->overrides[self::UID_A]);
+        unset($model->themes[self::UID_A]);
 
-        $this->assertEmpty($model->overrides, 'Overrides should be empty after removing the only UID');
+        $this->assertEmpty($model->themes, 'Themes should be empty after removing the only UID');
     }
 
     /**
      * After removing a UID, the remaining settings still pass validation.
      */
-    public function testOverridesValidAfterRemoval(): void
+    public function testThemesValidAfterRemoval(): void
     {
         $model = new Settings();
-        $model->overrides = [
-            self::UID_A => ['background' => '#ff0000'],
-            self::UID_B => ['background' => '#00ff00'],
+        $model->themes = [
+            self::UID_A => ['sidebar' => ['bg' => '#ff0000']],
+            self::UID_B => ['sidebar' => ['bg' => '#00ff00']],
         ];
 
-        unset($model->overrides[self::UID_A]);
-        $model->validate(['overrides']);
+        unset($model->themes[self::UID_A]);
+        $model->validate(['themes']);
 
-        $this->assertFalse($model->hasErrors('overrides'), 'Remaining overrides should pass validation after UID removal');
+        $this->assertFalse($model->hasErrors('themes'), 'Remaining themes should pass validation after UID removal');
     }
 
     /**
-     * The beforeSaveSettings() filtering logic strips empty strings and null
-     * values from site override sub-arrays, and removes entirely empty site entries.
-     *
-     * This mirrors the exact logic in SiteTint::beforeSaveSettings():
-     *   $filtered = array_filter($siteOverrides, fn($v) => is_string($v) && $v !== '');
-     *   if (!empty($filtered)) { $cleaned[$uid] = $filtered; }
+     * SiteTint::beforeSaveSettings() runs Settings::normalizeTheme() over
+     * every non-primary site and drops sites left with no color values.
      */
-    public function testStrippingEmptyValuesLeavesValidEntries(): void
+    public function testNormalizingLeavesOnlyNonEmptySites(): void
     {
-        $rawOverrides = [
+        $rawThemes = [
             self::UID_A => [
-                'background' => '#ff0000',
-                'accent' => '',             // empty string — should be stripped
+                'sidebar' => ['bg' => '#ff0000', 'text' => ''],
             ],
             self::UID_B => [
-                'background' => '',         // only empty values — entire entry removed
+                'sidebar' => ['bg' => ''],
             ],
         ];
 
-        // Apply the same filtering logic as SiteTint::beforeSaveSettings()
         $cleaned = [];
-        foreach ($rawOverrides as $uid => $siteOverrides) {
-            if (!is_array($siteOverrides)) {
-                continue;
-            }
-            $filtered = array_filter($siteOverrides, fn($v) => is_string($v) && $v !== '');
-            if (!empty($filtered)) {
-                $cleaned[$uid] = $filtered;
+        foreach ($rawThemes as $uid => $theme) {
+            $normalized = Settings::normalizeTheme($theme);
+            if (!empty($normalized)) {
+                $cleaned[$uid] = $normalized;
             }
         }
 
-        $expected = [
-            self::UID_A => ['background' => '#ff0000'],
-        ];
-
-        $this->assertSame($expected, $cleaned, 'Filtering should strip empty strings and remove empty site entries');
+        $this->assertSame([self::UID_A => ['sidebar' => ['bg' => '#ff0000']]], $cleaned);
         $this->assertArrayNotHasKey(self::UID_B, $cleaned, 'Site with only empty values should be removed entirely');
     }
 }

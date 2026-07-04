@@ -4,67 +4,54 @@ namespace transom\craftsitetint\tests\unit;
 
 use PHPUnit\Framework\TestCase;
 use transom\craftsitetint\models\Settings;
-use transom\craftsitetint\SiteTint;
 
+/**
+ * Unit tests for Settings::resolvedThemeForSite().
+ *
+ * Covers the three resolution paths: a saved v2 theme, an in-memory
+ * fallback to legacy v1 overrides (the window between deploy and the
+ * plugin's install migration running), and no theme at all.
+ */
 class SiteTintSettingsTest extends TestCase
 {
-    private function callResolveSiteColors(object $site, Settings $settings): array
+    private const UID = 'test-uid-123';
+
+    public function testReturnsSavedV2Theme(): void
     {
-        // Create SiteTint instance without Plugin constructor (avoids Craft bootstrap)
-        $plugin = (new \ReflectionClass(SiteTint::class))->newInstanceWithoutConstructor();
-        $method = new \ReflectionMethod(SiteTint::class, 'resolveSiteColors');
-        return $method->invoke($plugin, $site, $settings);
+        $settings = new Settings();
+        $settings->themes = [self::UID => ['sidebar' => ['bg' => '#8c2f3f']]];
+
+        $theme = $settings->resolvedThemeForSite(self::UID);
+
+        $this->assertSame(['sidebar' => ['bg' => '#8c2f3f']], $theme);
     }
 
-    public function testResolveSiteColorsReturnsAllKeys(): void
+    public function testFallsBackToLegacyOverridesWhenNoV2Theme(): void
     {
-        $site = $this->createMock(\craft\models\Site::class);
-        $site->handle = 'french';
-        $site->uid = 'test-uid-all-keys';
-
         $settings = new Settings();
+        $settings->overrides = [self::UID => ['accent' => '#ff0000']];
 
-        $result = $this->callResolveSiteColors($site, $settings);
+        $theme = $settings->resolvedThemeForSite(self::UID);
 
-        $expectedKeys = ['background', 'accent', 'accent-color', 'accent-color-hover', 'accent-hover'];
-        $this->assertSame($expectedKeys, array_keys($result));
-
-        foreach ($expectedKeys as $key) {
-            $this->assertIsString($result[$key], "Key '$key' should be a string");
-            $this->assertNotEmpty($result[$key], "Key '$key' should not be empty");
-        }
+        $this->assertSame('#ff0000', $theme['sidebar']['bg']);
+        $this->assertSame('#ff0000', $theme['controls']['accent']);
     }
 
-    public function testResolveSiteColorsOverrideTakesPrecedence(): void
+    public function testV2ThemeTakesPrecedenceOverLegacyOverrides(): void
     {
-        $site = $this->createMock(\craft\models\Site::class);
-        $site->handle = 'french';
-        $site->uid = 'test-uid-123';
-
         $settings = new Settings();
-        $settings->overrides = ['test-uid-123' => ['accent' => '#ff0000']];
+        $settings->themes = [self::UID => ['sidebar' => ['bg' => '#111111']]];
+        $settings->overrides = [self::UID => ['accent' => '#ff0000']];
 
-        $result = $this->callResolveSiteColors($site, $settings);
+        $theme = $settings->resolvedThemeForSite(self::UID);
 
-        $this->assertSame('#ff0000', $result['accent']);
+        $this->assertSame('#111111', $theme['sidebar']['bg']);
     }
 
-    public function testResolveSiteColorsFallsBackToDefaults(): void
+    public function testReturnsEmptyThemeForUnknownSite(): void
     {
-        $site = $this->createMock(\craft\models\Site::class);
-        $site->handle = 'empty-site';
-        $site->uid = 'test-uid-empty';
-
         $settings = new Settings();
-        $settings->palette = [];
-        $settings->overrides = [];
 
-        $result = $this->callResolveSiteColors($site, $settings);
-
-        $this->assertSame('oklch(95.4% 0.038 75.164)', $result['background']);
-        $this->assertSame('oklch(50% 0.1 75.164)', $result['accent']);
-        $this->assertSame('oklch(99% 0 0)', $result['accent-color']);
-        $this->assertSame('oklch(99% 0 0)', $result['accent-color-hover']);
-        $this->assertSame('oklch(50% 0.1 75.164)', $result['accent-hover']);
+        $this->assertSame([], $settings->resolvedThemeForSite(self::UID));
     }
 }

@@ -15,17 +15,17 @@ composer require transom/craft-site-tint
 
 ## Settings
 
-Go to **Settings → Site Tint**. The primary site always renders with native Craft styling and isn't themeable. Every other site gets its own section with:
+Go to Settings → Site Tint in the control panel. The primary site always keeps native Craft styling; every other site gets its own panel.
 
-- A **preset gallery** — click a preset to fill that site's fields; the values are copied in and remain fully editable.
-- A **live mockup** and swatch strip that update as you edit fields.
-- Four color groups, all optional — an unset field falls back to native Craft styling:
-  - **Sidebar** — background, text, text (hover), background (hover), background (active), text (active)
-  - **Header** — background, text, text (hover)
-  - **Content** — background, pane background, text
-  - **Controls** — button background, button text, button background (hover), link, focus ring
-- A **Revert to native** button that clears every field for that site.
+Each site has nine presets to start from. Clicking one fills the color fields, and you can tweak any of them before saving. A live mockup and swatch strip show the result as you edit.
 
-Nothing takes effect until you click Save.
+Colors are grouped into four areas, and every field is optional. Anything you leave empty stays native:
+
+- Sidebar: background, text, text (hover), background (hover), background (active), text (active)
+- Header: background, text, text (hover)
+- Content: background, pane background, text
+- Controls: button background, button text, button background (hover), link, focus ring
+
+The "Revert to native" button clears every field for that site. Nothing is applied until you save.
 
 Brought to you by [Transom](https://transom.design)

@@ -9,6 +9,7 @@ use craft\events\DeleteSiteEvent;
 use craft\models\Site;
 use craft\services\Sites;
 use craft\web\View;
+use transom\craftsitetint\helpers\TintCss;
 use transom\craftsitetint\models\Settings;
 use yii\base\Event;
 
@@ -23,87 +24,41 @@ use yii\base\Event;
  */
 class SiteTint extends Plugin
 {
-    public string $schemaVersion = '1.1.0';
+    // Public Properties
+    // =========================================================================
+
+    public string $schemaVersion = '2.0.0';
     public bool $hasCpSettings = true;
 
+    // Public Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     */
     public function init(): void
     {
         parent::init();
 
-        // Migrate legacy handle-keyed overrides to UID-keyed on first CP load
-        if (Craft::$app->getRequest()->getIsCpRequest()) {
-            $this->migrateHandleKeysToUid();
-        }
-
         $this->attachEventHandlers();
     }
 
-    private function migrateHandleKeysToUid(): void
-    {
-        $settings = $this->getSettings();
-        $migrated = [];
-        $didMigrate = false;
-        $uuidPattern = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
-
-        foreach ($settings->overrides as $key => $value) {
-            if (preg_match($uuidPattern, (string)$key)) {
-                // Already UID-keyed, keep as-is
-                $migrated[$key] = $value;
-            } else {
-                // Legacy handle key — attempt to resolve to UID
-                $site = Craft::$app->getSites()->getSiteByHandle((string)$key);
-                if ($site !== null) {
-                    $migrated[$site->uid] = $value;
-                    $didMigrate = true;
-                }
-                // If site not found, discard the orphaned entry
-            }
-        }
-
-        if ($didMigrate) {
-            Craft::$app->getPlugins()->savePluginSettings($this, ['overrides' => $migrated]);
-        }
-    }
-
+    /**
+     * @inheritdoc
+     */
     public static function displayName(): string
     {
         return Craft::t('site-tint', 'Site Tint');
     }
 
-    protected function createSettingsModel(): ?Model
-    {
-        return Craft::createObject(Settings::class);
-    }
-
-    protected function settingsHtml(): ?string
-    {
-        $allSites = Craft::$app->getSites()->getAllSites();
-        // Exclude primary site from the overrides table
-        $sites = array_filter($allSites, fn(Site $s) => !$s->primary);
-        $settings = $this->getSettings();
-
-        // Pass raw saved overrides for form values (not resolved defaults)
-        // so cleared fields show as empty, not backfilled with palette colors
-        $siteColors = [];
-        foreach ($sites as $site) {
-            $siteColors[$site->uid] = $settings->overrides[$site->uid] ?? [];
-        }
-
-        // Build resolved colors (palette fallback OR override) for preview swatches
-        $resolvedColors = [];
-        foreach ($sites as $site) {
-            $resolvedColors[$site->uid] = $this->resolveSiteColors($site, $settings);
-        }
-
-        return Craft::$app->view->renderTemplate('site-tint/_settings.twig', [
-            'plugin' => $this,
-            'settings' => $settings,
-            'sites' => $sites,
-            'siteColors' => $siteColors,
-            'resolvedColors' => $resolvedColors,
-        ]);
-    }
-
+    /**
+     * Applies the active site's base URL to the sidebar nav hook context, so
+     * nav links stay scoped to that site. No-op for the primary site or when
+     * no site is active.
+     *
+     * @param array $context The `cp.layouts.base` template hook context.
+     * @param Site|null $site The active control panel site.
+     */
     public static function applyNavHook(array &$context, ?Site $site): void
     {
         if ($site === null || $site->primary) {
@@ -115,10 +70,135 @@ class SiteTint extends Plugin
         }
     }
 
+    /**
+     * @inheritdoc
+     */
+    public function beforeSaveSettings(): bool
+    {
+        $settings = $this->getSettings();
+        $primaryUid = Craft::$app->getSites()->getPrimarySite()->uid;
+        $cleaned = [];
+
+        foreach ($settings->themes as $uid => $theme) {
+            if ($uid === $primaryUid || !is_array($theme)) {
+                continue;
+            }
+
+            $normalized = Settings::normalizeTheme($theme);
+            if (!empty($normalized)) {
+                $cleaned[$uid] = $normalized;
+            }
+        }
+
+        $settings->themes = $cleaned;
+
+        // Legacy properties never persist past the migration; keep them
+        // empty so a stray post from an old form can't resurrect them.
+        $settings->overrides = [];
+        $settings->palette = [];
+
+        return parent::beforeSaveSettings();
+    }
+
+    // Protected Methods
+    // =========================================================================
+
+    /**
+     * @inheritdoc
+     */
+    protected function createSettingsModel(): ?Model
+    {
+        return Craft::createObject(Settings::class);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected function settingsHtml(): ?string
+    {
+        $allSites = Craft::$app->getSites()->getAllSites();
+        // Exclude primary site — it always renders with native Craft styling.
+        $sites = array_filter($allSites, fn(Site $s) => !$s->primary);
+        $settings = $this->getSettings();
+
+        // Pass raw saved themes for form values (not resolved fallbacks) so
+        // cleared fields show as empty rather than backfilled.
+        $siteThemes = [];
+        foreach ($sites as $site) {
+            $siteThemes[$site->uid] = $settings->themes[$site->uid] ?? [];
+        }
+
+        return Craft::$app->getView()->renderTemplate('site-tint/_settings.twig', [
+            'plugin' => $this,
+            'settings' => $settings,
+            'sites' => $sites,
+            'siteThemes' => $siteThemes,
+            'presets' => Presets::all(),
+            'groups' => $this->groupLabels(),
+        ]);
+    }
+
+    // Private Methods
+    // =========================================================================
+
+    /**
+     * Returns the color group and field labels used to render the settings
+     * form's fieldsets, in display order.
+     *
+     * @return array<string, array{label: string, fields: array<string, string>}>
+     */
+    private function groupLabels(): array
+    {
+        return [
+            'sidebar' => [
+                'label' => Craft::t('site-tint', 'Sidebar'),
+                'fields' => [
+                    'bg' => Craft::t('site-tint', 'Background'),
+                    'text' => Craft::t('site-tint', 'Text'),
+                    'textHover' => Craft::t('site-tint', 'Text (hover)'),
+                    'hoverBg' => Craft::t('site-tint', 'Background (hover)'),
+                    'activeBg' => Craft::t('site-tint', 'Background (active)'),
+                    'activeText' => Craft::t('site-tint', 'Text (active)'),
+                ],
+            ],
+            'header' => [
+                'label' => Craft::t('site-tint', 'Header'),
+                'fields' => [
+                    'bg' => Craft::t('site-tint', 'Background'),
+                    'text' => Craft::t('site-tint', 'Text'),
+                    'textHover' => Craft::t('site-tint', 'Text (hover)'),
+                ],
+            ],
+            'content' => [
+                'label' => Craft::t('site-tint', 'Content'),
+                'fields' => [
+                    'bg' => Craft::t('site-tint', 'Background'),
+                    'paneBg' => Craft::t('site-tint', 'Pane background'),
+                    'text' => Craft::t('site-tint', 'Text'),
+                ],
+            ],
+            'controls' => [
+                'label' => Craft::t('site-tint', 'Controls'),
+                'fields' => [
+                    'accent' => Craft::t('site-tint', 'Button background'),
+                    'accentText' => Craft::t('site-tint', 'Button text'),
+                    'accentHover' => Craft::t('site-tint', 'Button background (hover)'),
+                    'link' => Craft::t('site-tint', 'Link'),
+                    'focusRing' => Craft::t('site-tint', 'Focus ring'),
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * Registers the plugin's event handlers: control panel CSS injection,
+     * the sidebar nav hook, and site-deletion cleanup.
+     */
     private function attachEventHandlers(): void
     {
-        // Site deletion cleanup runs unconditionally (not behind CP guard)
-        // so orphaned UID entries are removed even from console/queue contexts
+        // Site deletion cleanup runs unconditionally (not behind the CP
+        // guard below) so orphaned UID entries are removed even from
+        // console/queue contexts.
         Event::on(
             Sites::class,
             Sites::EVENT_AFTER_DELETE_SITE,
@@ -126,14 +206,13 @@ class SiteTint extends Plugin
                 $uid = $event->site->uid;
                 $settings = $this->getSettings();
 
-                if (array_key_exists($uid, $settings->overrides)) {
-                    unset($settings->overrides[$uid]);
-                    Craft::$app->getPlugins()->savePluginSettings($this, ['overrides' => $settings->overrides]);
+                if (array_key_exists($uid, $settings->themes)) {
+                    unset($settings->themes[$uid]);
+                    Craft::$app->getPlugins()->savePluginSettings($this, ['themes' => $settings->themes]);
                 }
             }
         );
 
-        // Only attach CP-specific event handlers if it's a control panel request
         if (!Craft::$app->getRequest()->getIsCpRequest()) {
             return;
         }
@@ -148,9 +227,8 @@ class SiteTint extends Plugin
                     return;
                 }
 
-                $settings = $this->getSettings();
-                $colors = $this->resolveSiteColors($site, $settings);
-                $css = self::buildTintCss($colors);
+                $theme = $this->getSettings()->resolvedThemeForSite($site->uid);
+                $css = TintCss::build($theme);
 
                 if ($css !== '') {
                     Craft::$app->getView()->registerCss($css, [], 'site-tint-cp');
@@ -164,6 +242,15 @@ class SiteTint extends Plugin
         });
     }
 
+    /**
+     * Resolves the site whose theme should apply to the current control
+     * panel request, preferring an explicit `site`/`siteId` request param
+     * over the session's stored site and falling back to Craft's current
+     * site.
+     *
+     * @return Site|null The resolved site, or null if none could be
+     * determined.
+     */
     private function resolveActiveCpSite(): ?Site
     {
         $req = Craft::$app->getRequest();
@@ -188,197 +275,5 @@ class SiteTint extends Plugin
         }
 
         return $sites->getCurrentSite();
-    }
-
-    private function colorsFromHandle(string $handle, array $palette): array
-    {
-        $defaultBackgroundColor = 'oklch(95.4% 0.038 75.164)';
-        $defaultAccentColor = 'oklch(50% 0.1 75.164)';
-        $defaultAccentTextColor = 'oklch(99% 0 0)';
-        $defaultAccentTextHoverColor = 'oklch(99% 0 0)';
-        $defaultAccentHoverColor = $defaultAccentColor;
-
-        if (empty($palette)) {
-            return [
-                'background' => $defaultBackgroundColor,
-                'accent' => $defaultAccentColor,
-                'accent-color' => $defaultAccentTextColor,
-                'accent-color-hover' => $defaultAccentTextHoverColor,
-                'accent-hover' => $defaultAccentHoverColor,
-            ];
-        }
-
-        $hashInput = $handle . '-site-color-v2';
-        $hash = hash('fnv1a32', $hashInput);
-        $index = hexdec(substr($hash, 0, 8)) % count($palette);
-
-        $selectedColors = $palette[$index];
-
-        if (!is_array($selectedColors) || !isset($selectedColors['background']) || !isset($selectedColors['accent'])) {
-            return [
-                'background' => $defaultBackgroundColor,
-                'accent' => $defaultAccentColor,
-                'accent-color' => $defaultAccentTextColor,
-                'accent-color-hover' => $defaultAccentTextHoverColor,
-                'accent-hover' => $defaultAccentHoverColor,
-            ];
-        }
-
-        return [
-            'background' => $selectedColors['background'],
-            'accent' => $selectedColors['accent'],
-            'accent-color' => $selectedColors['accent-color'] ?? $defaultAccentTextColor,
-            'accent-color-hover' => $selectedColors['accent-color-hover'] ?? $defaultAccentTextHoverColor,
-            'accent-hover' => $selectedColors['accent-hover'] ?? $defaultAccentHoverColor,
-        ];
-    }
-
-    public function beforeSaveSettings(): bool
-    {
-        $settings = $this->getSettings();
-        $primaryUid = Craft::$app->getSites()->getPrimarySite()->uid;
-        $cleaned = [];
-
-        foreach ($settings->overrides as $uid => $siteOverrides) {
-            // Always exclude primary site UID
-            if ($uid === $primaryUid) {
-                continue;
-            }
-
-            if (!is_array($siteOverrides)) {
-                continue;
-            }
-
-            // Strip empty strings and null values
-            $filtered = array_filter($siteOverrides, fn($v) => is_string($v) && $v !== '');
-
-            // Only keep non-empty site entries
-            if (!empty($filtered)) {
-                $cleaned[$uid] = $filtered;
-            }
-        }
-
-        $settings->overrides = $cleaned;
-
-        return parent::beforeSaveSettings();
-    }
-
-    protected function resolveSiteColors(Site $site, Settings $settings): array
-    {
-        $overrides = $settings->overrides[$site->uid] ?? [];
-        $palette = $settings->palette;
-        $base = $this->colorsFromHandle($site->handle, $palette);
-
-        $keys = [
-            'background',
-            'accent',
-            'accent-color',
-            'accent-color-hover',
-            'accent-hover',
-        ];
-
-        $resolved = [];
-        foreach ($keys as $key) {
-            $value = array_key_exists($key, $overrides) ? $overrides[$key] : ($base[$key] ?? null);
-            $resolved[$key] = $this->normalizeColorValue($value);
-        }
-
-        $resolved['background'] = $resolved['background'] ?: 'oklch(95.4% 0.038 75.164)';
-        $resolved['accent'] = $resolved['accent'] ?: 'oklch(50% 0.1 75.164)';
-        $resolved['accent-color'] = $resolved['accent-color'] ?: 'oklch(99% 0 0)';
-        $resolved['accent-color-hover'] = $resolved['accent-color-hover'] ?: 'oklch(99% 0 0)';
-        $resolved['accent-hover'] = $resolved['accent-hover'] ?: $resolved['accent'];
-
-        return $resolved;
-    }
-
-    private function normalizeColorValue(mixed $value): ?string
-    {
-        if (!is_string($value)) {
-            return null;
-        }
-
-        $value = trim($value);
-        if ($value === '') {
-            return null;
-        }
-
-        if ($value[0] === '#') {
-            return $value;
-        }
-
-        if (preg_match('/^[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/', $value)) {
-            return '#' . $value;
-        }
-
-        return $value;
-    }
-
-    /**
-     * Build the CSS string for site tinting.
-     *
-     * Pure function — no side effects, no registerCss() call.
-     * Returns an empty string when $colors is empty (primary site guard).
-     *
-     * @param array{background?: string, accent?: string, accent-color?: string, accent-color-hover?: string, accent-hover?: string} $colors
-     */
-    public static function buildTintCss(array $colors): string
-    {
-        if (empty($colors)) {
-            return '';
-        }
-
-        $background = $colors['background'] ?? '';
-        $accent = $colors['accent'] ?? '';
-        $accentColor = $colors['accent-color'] ?? '';
-        $accentColorHover = $colors['accent-color-hover'] ?? '';
-        $accentHover = $colors['accent-hover'] ?? '';
-
-        return <<<CSS
-            :root {
-              --cp-site-background: {$background};
-              --cp-site-accent: {$accent};
-              --cp-site-accent-color: {$accentColor};
-              --cp-site-accent-color-hover: {$accentColorHover};
-              --cp-site-accent-hover: {$accentHover};
-              --body-bg: var(--cp-site-background);
-              --sidebar-bg: var(--cp-site-accent);
-              --link-color: var(--cp-site-accent);
-              --primary-button-bg: var(--cp-site-accent);
-              --primary-button-bg--hover: var(--cp-site-accent-hover);
-              --nav-item-fg-active: var(--cp-site-accent-color);
-            }
-            #global-header {
-              background-color: var(--cp-site-accent) !important;
-            }
-            #global-header a,
-            #global-header button {
-              color: var(--cp-site-accent-color) !important;
-            }
-            #global-header a:hover,
-            #global-header a:focus,
-            #global-header button:hover,
-            #global-header button:focus {
-              color: var(--cp-site-accent-color-hover) !important;
-              background-color: var(--cp-site-accent-hover) !important;
-            }
-            .global-sidebar {
-              background-color: var(--cp-site-accent) !important;
-            }
-            .global-sidebar a,
-            .global-sidebar .nav a {
-              color: var(--cp-site-accent-color) !important;
-            }
-            .global-sidebar a:hover,
-            .global-sidebar a:focus,
-            .global-sidebar .nav a:hover,
-            .global-sidebar .nav a:focus {
-              color: var(--cp-site-accent-color-hover) !important;
-              background-color: var(--cp-site-accent-hover) !important;
-            }
-            #site-icon svg path {
-              fill: var(--cp-site-accent-color);
-            }
-            CSS;
     }
 }

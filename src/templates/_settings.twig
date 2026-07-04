@@ -1,13 +1,25 @@
+{# =========================================================================
+   Site Tint settings
+   Per-site control panel color themes: a preview-site switcher, and for
+   each non-primary site a preset gallery, live mockup, and grouped color
+   fields (sidebar / header / content / controls).
+   ========================================================================= #}
+
 {# @var plugin \transom\craftsitetint\SiteTint #}
 {# @var settings \transom\craftsitetint\models\Settings #}
+{# @var sites craft\models\Site[] #}
+{# @var siteThemes array #}
+{# @var presets array #}
+{# @var groups array #}
 
 {% import '_includes/forms.twig' as forms %}
+{% do view.registerAssetBundle('transom\\craftsitetint\\assets\\settings\\SettingsAsset') %}
 
 {% set siteParam = craft.app.request.getParam('site') %}
-{% set allSites = sites ?? craft.app.sites.getAllSites() %}
 {% set allSitesForSwitcher = craft.app.sites.getAllSites() %}
 {% set currentSite = siteParam ? craft.app.sites.getSiteByHandle(siteParam) : craft.app.sites.getCurrentSite() %}
 {% set currentSite = currentSite ?: craft.app.sites.getPrimarySite() %}
+
 {{ forms.selectField({
     label: 'Preview site'|t('site-tint'),
     instructions: 'Switch the site context to preview the control panel tint for that site.'|t('site-tint'),
@@ -55,55 +67,80 @@
 })();
 {% endjs %}
 
-<h3>{{ 'Per-site overrides'|t('site-tint') }}</h3>
-<p class="light">
-    {{ 'Adjust colors per site. These values are stored as overrides in plugin settings.'|t('site-tint') }}
-</p>
+<hr>
 
-{% set colorColumns = [
-    { key: 'background', label: 'Background'|t('site-tint') },
-    { key: 'accent', label: 'Accent'|t('site-tint') },
-    { key: 'accent-color', label: 'Accent text'|t('site-tint') },
-    { key: 'accent-color-hover', label: 'Accent text hover'|t('site-tint') },
-    { key: 'accent-hover', label: 'Accent hover'|t('site-tint') },
-] %}
-
-<table class="data fullwidth">
-    <thead>
-        <tr>
-            <th>{{ 'Site'|t('site-tint') }}</th>
-            <th>{{ 'Preview'|t('site-tint') }}</th>
-            {% for column in colorColumns %}
-                <th>{{ column.label }}</th>
-            {% endfor %}
-        </tr>
-    </thead>
-    <tbody>
-        {% for site in allSites %}
-            {% set rowColors = (siteColors[site.uid] ?? {}) %}
-            {% set resolved = resolvedColors[site.uid] ?? {} %}
-            <tr>
-                <th scope="row">
-                    <div>{{ site.name }}</div>
-                    <div class="light">{{ site.handle }}</div>
-                </th>
-                <td>
-                    <div style="display:inline-block; width:2rem; height:2rem; border-radius:0.375rem; background-color: {{ resolved.accent ?? 'transparent' }}; border: 1px solid rgba(0,0,0,0.1); vertical-align:middle;" title="{{ resolved.accent ?? 'Auto-assigned' }}"></div>
-                </td>
-                {% for column in colorColumns %}
-                    {% set colorValue = rowColors[column.key] ?? '' %}
-                    <td>
-                        {{ forms.color({
-                            id: "site-tint-#{site.uid}-#{column.key}"|replace({' ': '-', '_': '-'}),
-                            name: "overrides[#{site.uid}][#{column.key}]",
-                            value: colorValue,
-                            small: true,
-                        }) }}
-                    </td>
+{% for site in sites %}
+    {% set theme = siteThemes[site.uid] ?? {} %}
+    <div class="pane st-site" data-st-site="{{ site.uid }}">
+        <div class="st-site__header">
+            <h2>{{ site.name }}</h2>
+            <span class="light">{{ site.handle }}</span>
+            <div class="st-strip" data-st-strip>
+                {% for group in ['sidebar', 'header', 'content', 'controls'] %}
+                    {% set color = theme[group].bg ?? theme[group].accent ?? 'transparent' %}
+                    <span style="background-color: {{ color }}"></span>
                 {% endfor %}
-            </tr>
-        {% endfor %}
-    </tbody>
-</table>
+            </div>
+            <button type="button" class="btn" data-st-reset>{{ 'Revert to native'|t('site-tint') }}</button>
+        </div>
 
-{# ... #}
+        <p class="st-hint hidden" data-st-hint></p>
+
+        <h3>{{ 'Presets'|t('site-tint') }}</h3>
+        <div class="st-presets">
+            {% for handle, preset in presets %}
+                {% set presetTheme = preset.theme %}
+                <button type="button" class="st-preset" data-st-preset="{{ presetTheme|json_encode }}">
+                    <span class="st-preset__mock">
+                        <span class="st-preset__mock-sidebar" style="background-color: {{ presetTheme.sidebar.bg ?? '' }}"></span>
+                        <span class="st-preset__mock-header" style="background-color: {{ presetTheme.header.bg ?? '' }}"></span>
+                        <span class="st-preset__mock-content" style="background-color: {{ presetTheme.content.bg ?? '' }}">
+                            <span class="st-preset__mock-btn" style="background-color: {{ presetTheme.controls.accent ?? '' }}"></span>
+                        </span>
+                    </span>
+                    <span class="st-preset__name">{{ preset.name }}</span>
+                </button>
+            {% endfor %}
+        </div>
+
+        <h3>{{ 'Live preview'|t('site-tint') }}</h3>
+        <div class="st-mockup" aria-hidden="true">
+            <div class="st-mockup__sidebar">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <div class="st-mockup__header">
+                <span></span>
+            </div>
+            <div class="st-mockup__content">
+                <div class="st-mockup__pane"></div>
+                <div class="st-mockup__btn"></div>
+            </div>
+        </div>
+
+        {% for groupHandle, group in groups %}
+            <fieldset class="st-group">
+                <legend>{{ group.label }}</legend>
+                <div class="flex flex-wrap st-grid">
+                    {% for key, label in group.fields %}
+                        {% set fieldId = "st-#{site.uid}-#{groupHandle}-#{key}" %}
+                        <div class="field st-field-wrap" data-st-field="{{ groupHandle }}.{{ key }}">
+                            <div class="heading">
+                                <label for="{{ fieldId }}">{{ label }}</label>
+                            </div>
+                            <div class="input">
+                                {{ forms.color({
+                                    id: fieldId,
+                                    name: "themes[#{site.uid}][#{groupHandle}][#{key}]",
+                                    value: theme[groupHandle][key] ?? '',
+                                    small: true,
+                                }) }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </fieldset>
+        {% endfor %}
+    </div>
+{% endfor %}

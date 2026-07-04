@@ -178,6 +178,126 @@ final class Presets
                     ],
                 ],
             ],
+            'linen' => [
+                'name' => 'Linen',
+                'theme' => [
+                    'sidebar' => [
+                        'bg' => '#f3ede3',
+                        'text' => '#4a4036',
+                        'textHover' => '#2f2820',
+                        'hoverBg' => '#e9e0d2',
+                        'activeBg' => '#ddd2bf',
+                        'activeText' => '#2f2820',
+                    ],
+                    'header' => [
+                        'bg' => '#f3ede3',
+                        'text' => '#4a4036',
+                        'textHover' => '#2f2820',
+                    ],
+                    'content' => [
+                        'bg' => '#faf7f1',
+                        'paneBg' => '#ffffff',
+                        'text' => '#3a332b',
+                    ],
+                    'controls' => [
+                        'accent' => '#7d6242',
+                        'accentText' => '#ffffff',
+                        'accentHover' => '#675138',
+                        'link' => '#7d6242',
+                        'focusRing' => '#b59a76',
+                    ],
+                ],
+            ],
+            'sage' => [
+                'name' => 'Sage',
+                'theme' => [
+                    'sidebar' => [
+                        'bg' => '#e8ede6',
+                        'text' => '#3c4a3a',
+                        'textHover' => '#273425',
+                        'hoverBg' => '#dce3d8',
+                        'activeBg' => '#cdd8c7',
+                        'activeText' => '#273425',
+                    ],
+                    'header' => [
+                        'bg' => '#e8ede6',
+                        'text' => '#3c4a3a',
+                        'textHover' => '#273425',
+                    ],
+                    'content' => [
+                        'bg' => '#f7f9f5',
+                        'paneBg' => '#ffffff',
+                        'text' => '#2f3a2d',
+                    ],
+                    'controls' => [
+                        'accent' => '#4f6a4a',
+                        'accentText' => '#ffffff',
+                        'accentHover' => '#40573c',
+                        'link' => '#4f6a4a',
+                        'focusRing' => '#8fa98a',
+                    ],
+                ],
+            ],
+            'fog' => [
+                'name' => 'Fog',
+                'theme' => [
+                    'sidebar' => [
+                        'bg' => '#e9edf2',
+                        'text' => '#39434f',
+                        'textHover' => '#232c36',
+                        'hoverBg' => '#dde3ea',
+                        'activeBg' => '#cfd8e3',
+                        'activeText' => '#232c36',
+                    ],
+                    'header' => [
+                        'bg' => '#e9edf2',
+                        'text' => '#39434f',
+                        'textHover' => '#232c36',
+                    ],
+                    'content' => [
+                        'bg' => '#f6f8fa',
+                        'paneBg' => '#ffffff',
+                        'text' => '#2b333d',
+                    ],
+                    'controls' => [
+                        'accent' => '#46617f',
+                        'accentText' => '#ffffff',
+                        'accentHover' => '#385069',
+                        'link' => '#46617f',
+                        'focusRing' => '#92a7bf',
+                    ],
+                ],
+            ],
+            'noir' => [
+                'name' => 'Noir',
+                'theme' => [
+                    'sidebar' => [
+                        'bg' => '#1b1b1d',
+                        'text' => '#e8e8ea',
+                        'textHover' => '#ffffff',
+                        'hoverBg' => '#29292c',
+                        'activeBg' => '#343438',
+                        'activeText' => '#ffffff',
+                    ],
+                    'header' => [
+                        'bg' => '#1b1b1d',
+                        'text' => '#e8e8ea',
+                        'textHover' => '#ffffff',
+                    ],
+                    'content' => [
+                        'bg' => '#f4f4f5',
+                        'paneBg' => '#ffffff',
+                        'text' => '#222226',
+                    ],
+                    'controls' => [
+                        'accent' => '#3f3f46',
+                        'accentText' => '#ffffff',
+                        'accentHover' => '#2c2c31',
+                        'link' => '#3f3f46',
+                        'focusRing' => '#8e8e98',
+                    ],
+                ],
+            ],
         ];
     }
 }

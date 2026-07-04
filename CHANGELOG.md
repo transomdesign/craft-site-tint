@@ -3,7 +3,7 @@
 ## 2.0.0
 ### Added
 - Per-area control panel theming: sidebar, header, content, and controls each get their own background/text/hover colors (17 fields total, all optional).
-- A curated preset gallery (Vintage Burgundy, Forest, Slate, Ocean, Terracotta) per site — clicking a preset fills the color fields, which stay fully editable afterward.
+- A curated preset gallery (Vintage Burgundy, Forest, Slate, Ocean, Terracotta, Linen, Sage, Fog, Noir) per site — clicking a preset fills the color fields, which stay fully editable afterward. All presets pass WCAG AA contrast on every text/background pair.
 - A live mockup preview and swatch strip on the settings page that update as fields change.
 - A "Revert to native" button per site that clears its theme so it renders with stock Craft CP styling.
 - A migration (`m260705_120000_v2_themes`) that converts existing v1 overrides to the new grouped shape automatically on `craft up`.
